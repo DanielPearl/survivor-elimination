@@ -32,3 +32,8 @@ prior_perf_score,0.02457506174390841,in_game
 negative_edit_score,0.024195861202692126,edit
 episode_share_remaining,0.017545259445643023,structural
 is_finale,0.006421065307696957,structural
+reddit_mention_count,0.0,reddit
+reddit_boot_pick_count,0.0,reddit
+reddit_sentiment,0.0,reddit
+reddit_visibility_score,0.0,reddit
+reddit_target_share,0.0,reddit

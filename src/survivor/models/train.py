@@ -193,14 +193,22 @@ def _prune_features(X: pd.DataFrame, y: np.ndarray,
          rankings. Keeping only-LR-weak or only-RF-weak features
          lets us preserve signal one model spots that the other
          can't.
-      4. Validate the pruned set with the same season-aware CV the
-         sweep uses — keep the pruning only if mean CV F1 doesn't
-         drop by more than 0.5pp.
+      4. Live-only features (zero-variance in training, populated at
+         inference time — Reddit signals are the canonical example)
+         are NEVER pruned. The model would learn coef ≈ 0 for them
+         and they cost nothing to keep, but dropping them means the
+         live scorer's Reddit data has nowhere to land.
+      5. Validate the pruned set with the same season-aware CV the
+         sweep uses — roll back if mean CV F1 drops by > 0.5pp.
 
     Returns ``(kept_columns, report)``. ``report`` carries per-
     feature rankings + the pre/post CV F1 for the dashboard.
     """
     from sklearn.preprocessing import StandardScaler as _SS
+    # Identify zero-variance columns first — these can't be ranked
+    # meaningfully and we always keep them (live-only features).
+    variances = X.var(axis=0).values
+    zero_var_cols = {i for i, v in enumerate(variances) if v < 1e-12}
     scaler = _SS()
     Xs = scaler.fit_transform(X)
     lr_pruner = LogisticRegression(max_iter=2000, class_weight="balanced",
@@ -217,7 +225,7 @@ def _prune_features(X: pd.DataFrame, y: np.ndarray,
     cutoff = max(1, int(n * bottom_quartile_threshold))
     lr_bottom = set(np.argsort(lr_abs)[:cutoff].tolist())
     rf_bottom = set(np.argsort(rf_imp)[:cutoff].tolist())
-    weak = lr_bottom & rf_bottom
+    weak = (lr_bottom & rf_bottom) - zero_var_cols
     # Always keep at least 8 features.
     if n - len(weak) < 8:
         return list(X.columns), {"pruning_skipped": True}
