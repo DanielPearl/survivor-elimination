@@ -17,7 +17,7 @@ import pandas as pd
 # live scorer rebuilds the feature matrix in this order. Any addition
 # bumps the model artifact version (handled in the trainer).
 FEATURE_COLUMNS: List[str] = [
-    # Structural / game-state
+    # ── Structural / game-state ───────────────────────────────────
     "season",
     "episode",
     "remaining",
@@ -29,7 +29,7 @@ FEATURE_COLUMNS: List[str] = [
     "pre_merge_phase",                # 1 if merged == 0
     "is_finale",                       # 1 if remaining <= 4
 
-    # Per-contestant on-show signal
+    # ── Per-contestant on-show signal ─────────────────────────────
     "immunity_won",
     "tribe_immunity",
     "has_idol",
@@ -43,7 +43,29 @@ FEATURE_COLUMNS: List[str] = [
     "strategic_isolation",
     "prior_perf_score",
 
-    # Reddit-derived (zero for historical rows, populated live)
+    # ── Edgic / screen-time extensions ────────────────────────────
+    # confessional_share = contestant's share of total cast
+    # confessionals that episode. Captures relative-not-absolute
+    # screen time — a 6-confessional ep where everyone else got 8
+    # is a very different signal from a 6-confessional ep where
+    # everyone else got 2.
+    "confessional_share",
+    "narrative_intensity",
+    "swing_vote_potential",
+
+    # ── Game-state advantages ────────────────────────────────────
+    "advantages_held",
+    "idols_played_this_ep",
+    "vote_steals_active",
+    "same_starting_tribe_remaining",
+    "voting_minority_score",
+
+    # ── Returnee dynamics ─────────────────────────────────────────
+    "is_returnee",
+    "season_returnee_count",
+    "is_returnee_first_three_eps",
+
+    # ── Reddit-derived (zero for historical rows, populated live) ─
     "reddit_mention_count",
     "reddit_boot_pick_count",
     "reddit_sentiment",

@@ -56,15 +56,48 @@ log = logging.getLogger("survivor.data.historical")
 
 
 HISTORICAL_COLUMNS = [
+    # ── Identity / structure ──────────────────────────────────────
     "season", "episode", "contestant", "tribe", "eliminated",
     "starting_tribe", "starting_tribe_size", "tribe_size", "remaining",
     "merged", "swap_phase",
+    # ── On-show signal (pre-tribal) ───────────────────────────────
     "immunity_won", "tribe_immunity",
     "prior_votes_against", "times_targeted",
     "has_idol", "in_main_alliance",
     "confessional_count", "visibility_score", "visibility_spike",
     "negative_edit_score", "strategic_isolation", "prior_perf_score",
+    # ── Game-state extensions (added in the screen-time + advantage
+    # expansion). Defaults to 0 / False if a CSV row leaves them
+    # blank so older panels keep working unchanged.
+    "is_returnee",                  # contestant played a previous season
+    "season_returnee_count",        # total returnees in the cast (cohort dynamics)
+    "advantages_held",              # idol + non-idol advantages (extra vote, steal, …)
+    "idols_played_this_ep",         # idol played at TC this ep (known pre-vote)
+    "vote_steals_active",           # vote-steal-type advantages outstanding in the game
+    "same_starting_tribe_remaining",# how many of contestant's OG tribe are still in
+    "voting_minority_score",        # 0..1 — 1 = locked in the minority bloc
+    "confessional_share",           # confessionals / total cast confessionals this ep
+    "narrative_intensity",          # 0..1 — strength of the contestant's storyline
+    "swing_vote_potential",         # 0..1 — likelihood of being a tipping vote
+    "is_returnee_first_three_eps",  # returnees often safe in their first few episodes
 ]
+
+
+# Optional columns — older CSV checkouts may not have these. The loader
+# fills them with the per-column defaults below before training.
+_OPTIONAL_DEFAULTS: dict[str, float] = {
+    "is_returnee": 0.0,
+    "season_returnee_count": 0.0,
+    "advantages_held": 0.0,
+    "idols_played_this_ep": 0.0,
+    "vote_steals_active": 0.0,
+    "same_starting_tribe_remaining": 0.0,
+    "voting_minority_score": 0.5,
+    "confessional_share": 0.0,
+    "narrative_intensity": 0.5,
+    "swing_vote_potential": 0.0,
+    "is_returnee_first_three_eps": 0.0,
+}
 
 
 def load_historical_panel(csv_path: str | Path | None = None) -> pd.DataFrame:
@@ -83,12 +116,16 @@ def load_historical_panel(csv_path: str | Path | None = None) -> pd.DataFrame:
         from . import seed_panel  # local import keeps cold-load light
         return seed_panel.build()
     df = pd.read_csv(p)
-    missing = [c for c in HISTORICAL_COLUMNS if c not in df.columns]
+    # Required columns — fail loudly if these are missing.
+    required = [c for c in HISTORICAL_COLUMNS if c not in _OPTIONAL_DEFAULTS]
+    missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"historical csv missing columns: {missing}")
-    # Episode 0 is reserved for "pre-season cast reveal" rows the user
-    # may want to keep for visibility analytics. Drop them from the
-    # training set — the model only learns from on-show episodes.
+    # Optional columns — back-fill from defaults so older panels keep
+    # training cleanly when new feature columns are added.
+    for col, default in _OPTIONAL_DEFAULTS.items():
+        if col not in df.columns:
+            df[col] = default
     df = df[df["episode"].astype(int) >= 1].copy()
     df = df.sort_values(["season", "episode", "contestant"]).reset_index(drop=True)
     log.info("loaded historical panel: %d rows, %d seasons, %d boots",

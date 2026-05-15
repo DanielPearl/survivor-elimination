@@ -57,6 +57,11 @@ def predict_eliminated_proba(df: pd.DataFrame) -> np.ndarray:
             return np.clip(1.0 / np.maximum(r, 2), 0.02, 0.5)
         return np.full(n, 1.0 / max(1, n))
     X = build_features(df)
+    # If the trainer pruned features, the fitted models were trained
+    # on the pruned subset — subset the inference matrix the same way.
+    kept = art.get("kept_features")
+    if kept:
+        X = X[[c for c in kept if c in X.columns]].copy()
     best = art.get("best") or "logistic"
     raw: np.ndarray
     families = art.get("families") or {}

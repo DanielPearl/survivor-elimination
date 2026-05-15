@@ -29,7 +29,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, brier_score_loss, f1_score,
                               log_loss, precision_score, recall_score,
@@ -40,7 +40,7 @@ from ..data.historical import load_historical_panel
 from ..features.build_features import FEATURE_COLUMNS, build_features, label_column
 from ..utils.config import load_config, resolve_path
 from ..utils.logging_setup import setup_logging
-from .model_zoo import (build_stacker, build_zoo, run_sweep)
+from .model_zoo import (build_stacker, build_zoo, run_sweep, evaluate_spec)
 
 log = setup_logging("survivor.models.train")
 
@@ -177,6 +177,81 @@ def _calibrate_gbt(model: HistGradientBoostingClassifier,
     return cal
 
 
+def _prune_features(X: pd.DataFrame, y: np.ndarray,
+                     train_df: pd.DataFrame,
+                     bottom_quartile_threshold: float = 0.25,
+                     ) -> Tuple[List[str], Dict[str, Any]]:
+    """Drop the bottom-quartile features by both LR coefficient AND
+    RF importance — i.e. the features both models agree are noise.
+
+    Strategy:
+      1. Fit a standardised logistic and a small random forest on
+         the full feature set (using sklearn defaults at this stage).
+      2. Rank features by ``|standardised_coef|`` (LR) and
+         ``feature_importances_`` (RF).
+      3. A feature is "weak" if it's in the bottom 25% on BOTH
+         rankings. Keeping only-LR-weak or only-RF-weak features
+         lets us preserve signal one model spots that the other
+         can't.
+      4. Validate the pruned set with the same season-aware CV the
+         sweep uses — keep the pruning only if mean CV F1 doesn't
+         drop by more than 0.5pp.
+
+    Returns ``(kept_columns, report)``. ``report`` carries per-
+    feature rankings + the pre/post CV F1 for the dashboard.
+    """
+    from sklearn.preprocessing import StandardScaler as _SS
+    scaler = _SS()
+    Xs = scaler.fit_transform(X)
+    lr_pruner = LogisticRegression(max_iter=2000, class_weight="balanced",
+                                    random_state=17)
+    lr_pruner.fit(Xs, y)
+    rf_pruner = RandomForestClassifier(
+        n_estimators=200, max_depth=5, min_samples_leaf=5,
+        class_weight="balanced", random_state=17, n_jobs=-1,
+    )
+    rf_pruner.fit(X.values, y)
+    lr_abs = np.abs(lr_pruner.coef_[0])
+    rf_imp = rf_pruner.feature_importances_
+    n = X.shape[1]
+    cutoff = max(1, int(n * bottom_quartile_threshold))
+    lr_bottom = set(np.argsort(lr_abs)[:cutoff].tolist())
+    rf_bottom = set(np.argsort(rf_imp)[:cutoff].tolist())
+    weak = lr_bottom & rf_bottom
+    # Always keep at least 8 features.
+    if n - len(weak) < 8:
+        return list(X.columns), {"pruning_skipped": True}
+    keep_mask = [i not in weak for i in range(n)]
+    kept = [c for c, k in zip(X.columns, keep_mask) if k]
+    dropped = [c for c, k in zip(X.columns, keep_mask) if not k]
+    # Validate that the pruned set doesn't tank CV F1.
+    from .model_zoo import build_zoo as _build_zoo
+    zoo = _build_zoo()
+    logistic_spec = next(s for s in zoo if s.name == "logistic")
+    base_score = evaluate_spec(logistic_spec, {"C": 1.0, "penalty": "l2"},
+                                 X, y, train_df)
+    pruned_score = evaluate_spec(logistic_spec, {"C": 1.0, "penalty": "l2"},
+                                   X[kept], y, train_df)
+    report = {
+        "pruning_skipped": False,
+        "dropped": dropped,
+        "kept_count": len(kept),
+        "lr_importance": dict(zip(X.columns, lr_abs.tolist())),
+        "rf_importance": dict(zip(X.columns, rf_imp.tolist())),
+        "logistic_cv_f1_before": (base_score.mean_f1 if base_score else None),
+        "logistic_cv_f1_after": (pruned_score.mean_f1 if pruned_score else None),
+    }
+    # Roll back if pruning meaningfully degraded CV F1.
+    if (base_score and pruned_score and
+            pruned_score.mean_f1 < base_score.mean_f1 - 0.005):
+        log.info("pruning would have dropped CV F1 from %.3f -> %.3f, keeping all features",
+                  base_score.mean_f1, pruned_score.mean_f1)
+        report["pruning_skipped"] = True
+        return list(X.columns), report
+    log.info("pruning: dropped %s", dropped)
+    return kept, report
+
+
 def _split_by_seasons(panel: pd.DataFrame, holdout_seasons: int
                        ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     seasons = sorted(panel["season"].unique())
@@ -209,6 +284,22 @@ def train_and_persist() -> Dict[str, Any]:
     y_train = label_column(train_df)
     X_test = build_features(test_df)
     y_test = label_column(test_df)
+
+    # ── Feature pruning ──────────────────────────────────────────────
+    # Fit a quick logistic + random forest on the full feature set,
+    # rank features by ``|standardised_coef|`` and ``feature_importance``,
+    # drop columns that score in the bottom 25% on *both* models, and
+    # confirm the pruned panel keeps or improves CV F1. Prevents the
+    # sweep from being dragged down by noisy / redundant columns.
+    used_columns, pruning_report = _prune_features(
+        X_train, y_train, train_df,
+    )
+    if used_columns != list(X_train.columns):
+        log.info("pruning kept %d / %d features (dropped %d)",
+                  len(used_columns), len(X_train.columns),
+                  len(X_train.columns) - len(used_columns))
+        X_train = X_train[used_columns].copy()
+        X_test = X_test[used_columns].copy()
 
     # ── Sweep the model zoo via season-aware CV. ─────────────────────
     # Every (model, params) combination is scored by F1 on per-episode-
@@ -328,6 +419,7 @@ def train_and_persist() -> Dict[str, Any]:
     model_path = artifacts_dir / "model.joblib"
     joblib.dump({
         "feature_columns": FEATURE_COLUMNS,
+        "kept_features": used_columns,  # the pruned feature set actually fit
         "best": best_name,
         "threshold": best_threshold,
         "per_episode_normalize": True,
@@ -384,6 +476,8 @@ def train_and_persist() -> Dict[str, Any]:
             for name in test_metrics
         },
         "cv_leaderboard": cv_leaderboard,
+        "pruning": pruning_report,
+        "kept_features": used_columns,
         # Winner — surfaced at top level for the dashboard card.
         "blended": test_metrics[best_name],
         "blended_train": train_metrics[best_name],
@@ -413,7 +507,7 @@ def train_and_persist() -> Dict[str, Any]:
         lr_scaler = lr_fit["scaler"]
         coefs_payload = {
             "logistic": {
-                "features": FEATURE_COLUMNS,
+                "features": used_columns,
                 "coefficients": lr_model.coef_[0].tolist(),
                 "intercept": float(lr_model.intercept_[0]),
                 "scaler_mean": (lr_scaler.mean_.tolist()
@@ -434,16 +528,19 @@ def train_and_persist() -> Dict[str, Any]:
     fi_path = resolve_path(cfg["paths"]["feature_importance_csv"])
     if "logistic" in fitted_models:
         lr_model = fitted_models["logistic"]["model"]
+        # Use the actually-fit column list (after pruning) — not the
+        # global FEATURE_COLUMNS, which still carries pruned columns.
+        fit_cols = used_columns
         fi_df = pd.DataFrame({
-            "feature": FEATURE_COLUMNS,
+            "feature": fit_cols,
             "importance": np.abs(lr_model.coef_[0]),
-            "source": [_feature_source(f) for f in FEATURE_COLUMNS],
+            "source": [_feature_source(f) for f in fit_cols],
         }).sort_values("importance", ascending=False)
     else:
         fi_df = pd.DataFrame({
-            "feature": FEATURE_COLUMNS,
-            "importance": [0.0] * len(FEATURE_COLUMNS),
-            "source": [_feature_source(f) for f in FEATURE_COLUMNS],
+            "feature": used_columns,
+            "importance": [0.0] * len(used_columns),
+            "source": [_feature_source(f) for f in used_columns],
         })
     fi_df.to_csv(fi_path, index=False)
     log.info("wrote %s", fi_path)

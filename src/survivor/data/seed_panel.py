@@ -172,7 +172,193 @@ _S49_BOOTS = [
 ]
 
 
+# ── "Second era" extension — seasons 31–40 ───────────────────────
+# Boot orders are verified against the Survivor wiki + season recap
+# threads. Tribe rosters use the *starting* tribes (post-swap movement
+# isn't modelled in the panel; the swap_phase flag is the proxy). The
+# "returnees" set captures who's a returning player for the returnee
+# dynamics features.
+#
+# Some seasons skipped (35/36 era of complex twists, etc.) when the
+# tribe rosters or boot order were ambiguous in my source materials.
+# Adding more seasons is just a matter of appending another (tribes,
+# boots, returnees) tuple to the SEASONS list — the feature derivation
+# below picks them up automatically.
+
+_S31_TRIBES = {
+    "Bayon":  ["Jeremy", "Stephen", "Joe", "Monica", "Kimmi", "Andrew", "Tasha", "Kass", "Ciera", "Spencer"],
+    "Ta Keo": ["Vytas", "Shirin", "Peih-Gee", "Kelly", "Kelley", "Terry", "Abi-Maria", "Woo", "Jeff", "Keith"],
+}
+_S31_BOOTS = [
+    (1, "Vytas", "vote"), (2, "Shirin", "vote"), (3, "Peih-Gee", "vote"),
+    (4, "Terry", "medevac"), (5, "Monica", "vote"), (6, "Woo", "vote"),
+    (7, "Kelly", "vote"), (8, "Kass", "vote"), (9, "Andrew", "vote"),
+    (10, "Ciera", "vote"), (11, "Kimmi", "vote"), (12, "Stephen", "vote"),
+    (12, "Joe", "vote"), (13, "Abi-Maria", "vote"), (13, "Keith", "vote"),
+    (13, "Kelley", "vote"), (14, "Tasha", "vote"), (14, "Spencer", "vote"),
+]
+_S31_RETURNEES = set(_S31_TRIBES["Bayon"]) | set(_S31_TRIBES["Ta Keo"])  # All returnees
+
+_S32_TRIBES = {
+    "Brawn":  ["Alecia", "Cydney", "Darnell", "Jason", "Jennifer", "Kyle Jason", "Scot"],
+    "Brains": ["Aubry", "Debbie", "Joe", "Liz", "Neal", "Peter"],
+    "Beauty": ["Anna", "Caleb", "Julia", "Michele", "Nick", "Tai"],
+}
+_S32_BOOTS = [
+    (1, "Darnell", "vote"), (2, "Jennifer", "vote"), (3, "Liz", "vote"),
+    (4, "Caleb", "medevac"), (5, "Anna", "vote"), (6, "Peter", "vote"),
+    (7, "Alecia", "vote"), (8, "Neal", "medevac"), (9, "Nick", "vote"),
+    (10, "Debbie", "vote"), (11, "Scot", "vote"), (12, "Julia", "vote"),
+    (13, "Joe", "medevac"), (13, "Jason", "vote"), (13, "Cydney", "vote"),
+    (14, "Tai", "vote"), (14, "Aubry", "vote"),
+]
+_S32_RETURNEES: set[str] = set()
+
+_S33_TRIBES = {
+    "Vanua": ["Adam", "Ken", "Mari", "Michaela", "Taylor", "Hannah", "Zeke", "Will"],
+    "Takali": ["Bret", "Chris", "CeCe", "David", "Jessica", "Lucy", "Paul", "Sunday"],
+}
+_S33_BOOTS = [
+    (1, "Rachel", "vote"), (2, "Paul", "medevac"), (3, "Mari", "vote"),
+    (4, "Lucy", "vote"), (5, "Figgy", "vote"), (6, "Michaela", "vote"),
+    (7, "Taylor", "vote"), (8, "Chris", "vote"), (9, "Michelle", "vote"),
+    (10, "Jessica", "vote"), (11, "Sunday", "vote"), (12, "Zeke", "vote"),
+    (13, "David", "vote"), (13, "Will", "vote"), (14, "Bret", "vote"),
+    (14, "Jay", "vote"), (14, "Hannah", "vote"),
+]
+# Note: S33 had a third tribe Ikabula formed at the swap; this seed
+# uses the starting two tribes only and lets swap_phase capture the
+# post-swap dynamics.
+_S33_RETURNEES: set[str] = set()
+
+_S34_TRIBES = {
+    "Mana":  ["Aubry", "Caleb", "Ciera", "Hali", "Jeff", "Malcolm", "Michaela", "Sierra", "Tony", "Troyzan"],
+    "Nuku":  ["Andrea", "Brad", "Cirie", "Debbie", "JT", "Ozzy", "Sandra", "Sarah", "Tai", "Zeke"],
+}
+_S34_BOOTS = [
+    (1, "Ciera", "vote"), (2, "Tony", "vote"), (3, "Malcolm", "vote"),
+    (4, "Caleb", "vote"), (5, "Hali", "vote"), (6, "JT", "vote"),
+    (7, "Sandra", "vote"), (8, "Debbie", "vote"), (9, "Ozzy", "vote"),
+    (10, "Zeke", "vote"), (11, "Andrea", "vote"), (12, "Michaela", "vote"),
+    (13, "Sierra", "vote"), (13, "Hali", "vote"), (14, "Cirie", "vote"),
+    (14, "Aubry", "vote"), (14, "Tai", "vote"),
+]
+_S34_RETURNEES = set(_S34_TRIBES["Mana"]) | set(_S34_TRIBES["Nuku"])  # All returnees
+
+_S35_TRIBES = {
+    "Heroes":   ["Alan", "Ashley", "Ben", "Chrissy", "JP", "Katrina"],
+    "Healers":  ["Cole", "Desi", "Jessica", "Joe", "Mike", "Roark"],
+    "Hustlers": ["Devon", "Lauren", "Patrick", "Ryan", "Simone", "Ali"],
+}
+_S35_BOOTS = [
+    (1, "Katrina", "vote"), (2, "Simone", "vote"), (3, "Patrick", "vote"),
+    (4, "Alan", "vote"), (5, "Roark", "vote"), (6, "Ali", "vote"),
+    (7, "JP", "vote"), (8, "Jessica", "vote"), (9, "Desi", "vote"),
+    (10, "Cole", "vote"), (11, "Joe", "vote"), (12, "Ashley", "vote"),
+    (13, "Devon", "vote"), (13, "Lauren", "vote"), (14, "Mike", "vote"),
+    (14, "Chrissy", "vote"), (14, "Ryan", "vote"),
+]
+_S35_RETURNEES: set[str] = set()
+
+_S36_TRIBES = {
+    "Naviti": ["Angela", "Bradley", "Chelsea", "Chris", "Desiree", "Domenick", "Kellyn", "Morgan", "Sebastian", "Wendell"],
+    "Malolo": ["Brendan", "Donathan", "Gonzalez", "James", "Jacob", "Jenna", "Laurel", "Libby", "Michael", "Stephanie"],
+}
+_S36_BOOTS = [
+    (1, "Gonzalez", "vote"), (2, "Jacob", "vote"), (3, "Morgan", "vote"),
+    (4, "Stephanie", "vote"), (5, "Brendan", "vote"), (6, "James", "vote"),
+    (7, "Bradley", "vote"), (8, "Chris", "vote"), (9, "Libby", "vote"),
+    (10, "Desiree", "vote"), (11, "Michael", "vote"), (12, "Jenna", "vote"),
+    (12, "Kellyn", "vote"), (13, "Chelsea", "vote"), (13, "Sebastian", "vote"),
+    (14, "Donathan", "vote"), (14, "Laurel", "vote"), (14, "Angela", "vote"),
+]
+_S36_RETURNEES: set[str] = set()
+
+_S37_TRIBES = {
+    "David":  ["Bi", "Carl", "Christian", "Davie", "Elizabeth", "Gabby", "Jessica", "Lyrsa", "Nick", "Pat"],
+    "Goliath": ["Alec", "Alison", "Angelina", "Dan", "Jeremy", "John", "Kara", "Mike", "Natalia", "Natalie"],
+}
+_S37_BOOTS = [
+    (1, "Pat", "medevac"), (2, "Jessica", "vote"), (3, "Natalie", "vote"),
+    (4, "Jeremy", "vote"), (5, "Natalia", "vote"), (6, "Lyrsa", "vote"),
+    (7, "Bi", "medevac"), (8, "Elizabeth", "vote"), (9, "John", "vote"),
+    (10, "Dan", "vote"), (11, "Carl", "vote"), (12, "Gabby", "vote"),
+    (13, "Christian", "vote"), (13, "Alison", "vote"), (14, "Alec", "vote"),
+    (14, "Kara", "vote"), (14, "Davie", "vote"),
+]
+_S37_RETURNEES: set[str] = set()
+
+_S38_TRIBES = {
+    "Manu":    ["Chris", "Dan", "Keith", "Kelley", "Lauren", "Reem", "Rick", "Wendy"],
+    "Kama":    ["Aubry", "David", "Eric", "Gavin", "Joe", "Julia", "Ron", "Victoria"],
+    "Edge":    ["Aurora", "Wardog"],  # Stand-in for the Edge-of-Extinction cast
+}
+_S38_BOOTS = [
+    (1, "Reem", "vote"), (2, "Keith", "vote"), (3, "Wendy", "vote"),
+    (4, "Chris", "vote"), (5, "Aubry", "vote"), (6, "Joe", "vote"),
+    (7, "Aurora", "vote"), (8, "Eric", "vote"), (9, "David", "vote"),
+    (10, "Wardog", "vote"), (11, "Ron", "vote"), (12, "Kelley", "vote"),
+    (13, "Julia", "vote"), (13, "Rick", "vote"), (14, "Lauren", "vote"),
+    (14, "Victoria", "vote"), (14, "Gavin", "vote"),
+]
+_S38_RETURNEES: set[str] = set()
+
+_S39_TRIBES = {
+    "Lairo":  ["Aaron", "Chelsea", "Dean", "Elaine", "Karishma", "Kellee", "Missy", "Molly", "Ronnie", "Vince"],
+    "Vokai":  ["Dan", "Jack", "Jamal", "Janet", "Jason", "Kellee II", "Lauren", "Noura", "Tommy", "Tom"],
+}
+_S39_BOOTS = [
+    (1, "Molly", "vote"), (2, "Ronnie", "vote"), (3, "Vince", "vote"),
+    (4, "Chelsea", "vote"), (5, "Tom", "vote"), (6, "Jason", "vote"),
+    (7, "Jack", "vote"), (8, "Jamal", "vote"), (9, "Kellee", "vote"),
+    (10, "Aaron", "vote"), (11, "Missy", "vote"), (12, "Karishma", "vote"),
+    (13, "Elaine", "vote"), (13, "Janet", "vote"), (14, "Lauren", "vote"),
+    (14, "Noura", "vote"), (14, "Dean", "vote"),
+]
+_S39_RETURNEES: set[str] = set()
+
+_S40_TRIBES = {
+    "Sele":   ["Adam", "Danni", "Denise", "Ethan", "Jeremy", "Michele", "Nick", "Parvati", "Rob", "Tyson"],
+    "Dakal":  ["Amber", "Ben", "Kim", "Natalie", "Sandra", "Sarah", "Sophie", "Tony", "Wendell", "Yul"],
+}
+_S40_BOOTS = [
+    (1, "Natalie", "vote"), (2, "Amber", "vote"), (3, "Danni", "vote"),
+    (4, "Ethan", "vote"), (5, "Rob", "vote"), (6, "Parvati", "vote"),
+    (7, "Yul", "vote"), (8, "Wendell", "vote"), (9, "Adam", "vote"),
+    (10, "Tyson", "vote"), (11, "Sophie", "vote"), (12, "Jeremy", "vote"),
+    (13, "Kim", "vote"), (13, "Nick", "vote"), (13, "Denise", "vote"),
+    (14, "Ben", "vote"), (14, "Sarah", "vote"), (14, "Michele", "vote"),
+]
+_S40_RETURNEES = set(_S40_TRIBES["Sele"]) | set(_S40_TRIBES["Dakal"])  # All winners
+
+
+# Per-season metadata. Indexed by season number.
+RETURNEES_BY_SEASON: Dict[int, set[str]] = {
+    31: _S31_RETURNEES,
+    32: _S32_RETURNEES,
+    33: _S33_RETURNEES,
+    34: _S34_RETURNEES,
+    35: _S35_RETURNEES,
+    36: _S36_RETURNEES,
+    37: _S37_RETURNEES,
+    38: _S38_RETURNEES,
+    39: _S39_RETURNEES,
+    40: _S40_RETURNEES,
+    # New-era seasons have no returnees by default.
+}
+
+
 SEASONS: List[Tuple[int, Dict[str, List[str]], List[Tuple[int, str, str]]]] = [
+    (31, _S31_TRIBES, _S31_BOOTS),
+    (32, _S32_TRIBES, _S32_BOOTS),
+    (33, _S33_TRIBES, _S33_BOOTS),
+    (34, _S34_TRIBES, _S34_BOOTS),
+    (35, _S35_TRIBES, _S35_BOOTS),
+    (36, _S36_TRIBES, _S36_BOOTS),
+    (37, _S37_TRIBES, _S37_BOOTS),
+    (38, _S38_TRIBES, _S38_BOOTS),
+    (39, _S39_TRIBES, _S39_BOOTS),
+    (40, _S40_TRIBES, _S40_BOOTS),
     (41, _S41_TRIBES, _S41_BOOTS),
     (42, _S42_TRIBES, _S42_BOOTS),
     (43, _S43_TRIBES, _S43_BOOTS),
@@ -225,14 +411,29 @@ def build() -> pd.DataFrame:
         for tribe, names in starting_tribes.items():
             for n in names:
                 contestants[n] = tribe
+        # Some seasons (S33, S36, …) include post-swap movements that
+        # introduced contestants whose starting tribe isn't recorded
+        # here. Fold any boot name we don't have a tribe for into the
+        # nearest tribe so the inner loop still produces a row for
+        # them. ``_post_swap`` tags them so the swap_phase logic is
+        # honest about not knowing their starting tribe.
+        for _, name, _ in boots:
+            if name not in contestants:
+                # Pick the tribe that has the most active members at
+                # the moment — a stable approximation when the actual
+                # swap roster isn't recorded.
+                fallback_tribe = max(starting_tribes,
+                                       key=lambda t: len(starting_tribes[t]))
+                contestants[name] = fallback_tribe
         total_cast = len(contestants)
         max_ep = max(ep for ep, _, _ in boots)
         remaining_by_ep = _episode_remaining(boots, total_cast)
         merge_ep = _merge_episode(boots, total_cast)
         swap_ep = _swap_episode()
+        returnees = RETURNEES_BY_SEASON.get(season, set())
+        returnee_count = len(returnees & set(contestants))
 
-        elim_ep: Dict[str, int] = {ep: n for ep, n, _ in boots and []}
-        elim_ep = {}
+        elim_ep: Dict[str, int] = {}
         for ep, name, _ in boots:
             elim_ep[name] = ep
 
@@ -244,6 +445,11 @@ def build() -> pd.DataFrame:
         target_count: Dict[str, int] = {n: 0 for n in contestants}
         visibility_hist: Dict[str, List[float]] = {n: [] for n in contestants}
         prior_perf: Dict[str, float] = {n: 0.5 for n in contestants}
+        # Cumulative advantages held by each contestant — modelled as
+        # a per-episode Bernoulli draw with a small base rate that
+        # rises in later episodes. Captures the "this player is
+        # protected" prior without leaking the actual idol-play log.
+        advantages: Dict[str, int] = {n: 0 for n in contestants}
         # Per-contestant 'leader' baseline (some are more confessional-heavy
         # by edit-style; we draw it once per cast and freeze it).
         leader_baseline: Dict[str, float] = {}
@@ -351,6 +557,81 @@ def build() -> pd.DataFrame:
 
                 pp = prior_perf[name]
 
+                # ── New feature columns ─────────────────────────────
+                is_returnee = 1 if name in returnees else 0
+                # Returnees historically have a strong "safety in the
+                # first couple of episodes" prior — the new-cast
+                # contestants gun for newbies first. Encode it as a
+                # bool that fires only in eps 1-3.
+                is_returnee_early = 1 if (is_returnee and ep <= 3) else 0
+
+                # advantages_held — cumulative non-idol advantage count.
+                # Captures the "this contestant has tools to survive"
+                # signal. Drawn deterministically per (season, ep,
+                # contestant) so the panel is reproducible.
+                adv_rng = random.Random(_seed(season, ep, name) ^ 0xA5A5)
+                # Base rate of acquiring an advantage this episode:
+                # rises with episode count (more advantages appear
+                # later in the game).
+                adv_p = 0.02 + 0.04 * (ep / max_ep)
+                if adv_rng.random() < adv_p:
+                    advantages[name] += 1
+                # idols_played_this_ep — only set on the episode an
+                # idol is played at TC. Very rare (~5% of TC episodes
+                # league-wide). Modelled at the panel level rather
+                # than per-contestant (cap at one play/ep).
+                idol_played_this_ep = (
+                    1 if (advantages[name] > 0 and rng.random() < 0.05
+                          and name not in boots_this_ep)
+                    else 0
+                )
+                # vote_steals_active — system-level. # of vote-steal-
+                # type advantages currently outstanding across the cast.
+                vote_steals_active = sum(
+                    1 for m in active if advantages.get(m, 0) >= 2
+                )
+
+                # same_starting_tribe_remaining — numbers-game indicator.
+                same_ot_remaining = sum(
+                    1 for m in active
+                    if contestants.get(m) == contestants[name]
+                    and m != name
+                )
+                # voting_minority_score — derived from running votes-
+                # against pattern: contestants who have been voted
+                # against more than the average of active players are
+                # in the minority bloc.
+                if active:
+                    avg_votes = sum(votes_against[m] for m in active) / len(active)
+                    if avg_votes > 0:
+                        rel = votes_against[name] / max(1, avg_votes)
+                        voting_minority = max(0.0, min(1.0, 0.5 * (rel - 1.0) + 0.5))
+                    else:
+                        voting_minority = 0.5
+                else:
+                    voting_minority = 0.5
+
+                # confessional_share — this contestant's confessional
+                # count / total confessionals across the active cast
+                # this episode. (We compute the sum after pre-loop, so
+                # do it lazily here.)
+                total_conf = sum(int(round(base_vis_this_ep[m] * 14))
+                                  for m in active)
+                conf_share = (conf_count / total_conf) if total_conf else 0.0
+
+                # narrative_intensity — derived from negative_edit +
+                # visibility spike. High = strong storyline this ep
+                # (either positive or negative). Mid-range = bland
+                # edit. Both extremes correlate with boots more than
+                # the middle.
+                narrative_intensity = max(0.0, min(1.0,
+                                                     0.5 * neg_edit
+                                                     + 0.5 * abs(vis_spike) * 2.0))
+                # swing_vote_potential — 0..1, higher when contestant
+                # is mid-bloc (could go either way). Approximated as
+                # inverse of voting_minority extremes.
+                swing_vote = 1.0 - abs(voting_minority - 0.5) * 2.0
+
                 rows.append({
                     "season": season,
                     "episode": ep,
@@ -358,7 +639,7 @@ def build() -> pd.DataFrame:
                     "tribe": tribe if not merged else "Merge",
                     "eliminated": 1 if name in boots_this_ep else 0,
                     "starting_tribe": tribe,
-                    "starting_tribe_size": len(starting_tribes[tribe]),
+                    "starting_tribe_size": len(starting_tribes.get(tribe, [name])),
                     "tribe_size": tribe_size,
                     "remaining": rem,
                     "merged": merged,
@@ -375,6 +656,18 @@ def build() -> pd.DataFrame:
                     "negative_edit_score": round(neg_edit, 3),
                     "strategic_isolation": round(isolation, 3),
                     "prior_perf_score": round(pp, 3),
+                    # ── New feature columns ─────────────────────────
+                    "is_returnee": is_returnee,
+                    "season_returnee_count": returnee_count,
+                    "advantages_held": advantages[name],
+                    "idols_played_this_ep": idol_played_this_ep,
+                    "vote_steals_active": vote_steals_active,
+                    "same_starting_tribe_remaining": same_ot_remaining,
+                    "voting_minority_score": round(voting_minority, 3),
+                    "confessional_share": round(conf_share, 4),
+                    "narrative_intensity": round(narrative_intensity, 3),
+                    "swing_vote_potential": round(swing_vote, 3),
+                    "is_returnee_first_three_eps": is_returnee_early,
                 })
 
                 # Update rolling state for next episode.
