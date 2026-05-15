@@ -33,11 +33,21 @@ and this module is bypassed.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import random
 from typing import Dict, List, Tuple
 
 import pandas as pd
+
+
+def _stable_hash(s: str) -> int:
+    """Cross-process-stable hash. Python's built-in ``hash()`` is
+    randomised per interpreter, which makes the seed panel — and
+    therefore the trained model — non-reproducible across machines.
+    md5 is overkill but the cost is irrelevant on a 1.4k-row panel.
+    """
+    return int(hashlib.md5(s.encode("utf-8")).hexdigest()[:12], 16)
 
 
 # --------------------------------------------------------------------------- #
@@ -176,7 +186,7 @@ SEASONS: List[Tuple[int, Dict[str, List[str]], List[Tuple[int, str, str]]]] = [
 
 
 def _seed(season: int, episode: int, contestant: str) -> int:
-    return (season * 9973 + episode * 101 + abs(hash(contestant))) & 0x7FFFFFFF
+    return (season * 9973 + episode * 101 + _stable_hash(contestant)) & 0x7FFFFFFF
 
 
 def _episode_remaining(boots_in_season: List[Tuple[int, str, str]],
@@ -295,7 +305,7 @@ def build() -> pd.DataFrame:
                 if merged and boots_this_ep:
                     pool = sorted(
                         [n for n in active if n not in boots_this_ep],
-                        key=lambda x: (ep * 31 + abs(hash(x))) % 1000,
+                        key=lambda x: (ep * 31 + _stable_hash(x)) % 1000,
                     )
                     if pool:
                         imm = 1 if name == pool[0] else 0
