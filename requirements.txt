@@ -1,0 +1,17 @@
+# Shared SDK — installs the same kalshi-sdk every other bot uses.
+-e ../kalshi_sdk
+
+# Modelling
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+joblib>=1.3
+
+# Reddit ingestion (pulls praw + textblob lazily; both are stdlib-friendly).
+praw>=7.7
+textblob>=0.17
+
+# Config / HTTP
+PyYAML>=6.0
+requests>=2.31
+python-dotenv>=1.0

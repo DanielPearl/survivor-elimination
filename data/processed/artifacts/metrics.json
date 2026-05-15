@@ -1,0 +1,46 @@
+{
+  "rows_train": 780,
+  "rows_test": 624,
+  "train_seasons": [
+    41,
+    42,
+    43,
+    44,
+    45
+  ],
+  "test_seasons": [
+    46,
+    47,
+    48,
+    49
+  ],
+  "logistic": {
+    "accuracy": 0.6442307692307693,
+    "brier": 0.22103734382320597,
+    "log_loss": 0.6098019377613868,
+    "f1": 0.3231707317073171,
+    "precision": 0.1948529411764706,
+    "recall": 0.9464285714285714,
+    "roc_auc": 0.8650653923541247
+  },
+  "calibrated_gbt": {
+    "accuracy": 0.9102564102564102,
+    "brier": 0.07433271143198508,
+    "log_loss": 0.260506611448831,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.8174044265593561
+  },
+  "blended": {
+    "accuracy": 0.9102564102564102,
+    "brier": 0.07433271143198508,
+    "log_loss": 0.260506611448831,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.8174044265593561
+  },
+  "best_model": "calibrated_gbt",
+  "feature_count": 27
+}

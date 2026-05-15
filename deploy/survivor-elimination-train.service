@@ -1,0 +1,13 @@
+[Unit]
+Description=Survivor elimination daily retrain (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/survivor-elimination
+EnvironmentFile=-/root/kalshi/Secret Keys/.env.shared
+EnvironmentFile=-/root/survivor-elimination/.env
+ExecStart=/root/survivor-elimination/.venv/bin/python /root/survivor-elimination/scripts/run_daily_train.py
+StandardOutput=journal
+StandardError=journal

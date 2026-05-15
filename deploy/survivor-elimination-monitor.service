@@ -1,0 +1,18 @@
+[Unit]
+Description=Survivor elimination live monitor (Kalshi watchlist refresher)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/survivor-elimination
+EnvironmentFile=-/root/kalshi/Secret Keys/.env.shared
+EnvironmentFile=-/root/survivor-elimination/.env
+ExecStart=/root/survivor-elimination/.venv/bin/python /root/survivor-elimination/scripts/run_live_monitor.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

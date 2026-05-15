@@ -1,0 +1,11 @@
+[Unit]
+Description=Survivor elimination daily retrain timer (every 24h)
+
+[Timer]
+# Re-train once a day at 06:30 UTC — gives the post-episode reaction
+# threads a full overnight to populate before the model picks them up.
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

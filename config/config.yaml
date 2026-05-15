@@ -1,0 +1,110 @@
+# Survivor elimination forecaster config.
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  artifacts_dir: data/processed/artifacts
+  outputs_dir: data/outputs
+  # Historical seed: one row per (season, episode, contestant) — the
+  # supervised training panel. Lives in raw/ so a `git pull` ships the
+  # latest version to the droplet without a separate sync step.
+  historical_csv: data/raw/historical_boots.csv
+  # Current-season state — one row per active contestant, refreshed
+  # each tick by the live scorer. The Reddit ingestion module rewrites
+  # this file in place when it pulls fresh metrics.
+  current_state_json: data/raw/current_state.json
+  # Watchlist exporter writes to:
+  watchlist_json: data/outputs/watchlist.json
+  watchlist_csv: data/outputs/watchlist.csv
+  metrics_json: data/processed/artifacts/metrics.json
+  coefficients_json: data/processed/artifacts/model_coefficients.json
+  sim_state_json: data/outputs/sim_state.json
+  feature_importance_csv: data/processed/artifacts/feature_importance.csv
+  holdout_predictions_csv: data/processed/artifacts/holdout_predictions.csv
+
+training:
+  # Hold out the most recent N seasons for evaluation. Captures recent
+  # meta shifts (post-merge advantages, faster eliminations) without
+  # the model peeking at them during fit.
+  test_holdout_seasons: 4
+  # Sigmoid calibration on the holdout tail (same idiom as the tennis
+  # bot). Tree models otherwise crowd predictions to the extremes.
+  calibration_holdout_fraction: 0.20
+  # HistGradientBoosting depth / learning rate. The training panel is
+  # small (~9k rows) so we keep the model deliberately shallow.
+  hgb_max_depth: 4
+  hgb_learning_rate: 0.05
+  hgb_max_iter: 300
+  hgb_l2_regularization: 1.0
+  # Random seed used by both the GBT and the train/holdout shuffle.
+  random_state: 17
+
+kalshi:
+  # Kalshi tags every Survivor-elimination series with this prefix.
+  # The scorer queries the full event list and filters to events
+  # whose series_ticker begins with KXSURVIVOR — that way new
+  # seasons (KXSURVIVOR50, KXSURVIVOR51, …) are picked up without a
+  # code change.
+  series_ticker_prefix: KXSURVIVOR
+  # Polling cadence for the live scorer.
+  poll_interval_seconds: 300
+  # Slippage applied to Kalshi quotes when computing EV per contract.
+  slippage_pct: 0.02
+
+reddit:
+  # Subreddits crawled for boot-prediction / sentiment signals. The
+  # ordering matters — survivor is the canonical community, the
+  # others provide additional density and edgic-style coverage.
+  subreddits:
+    - survivor
+    - survivorranker
+  # Lookback window for the rolling counters (mentions, boot picks,
+  # negative-edit signal). Mirrors the episode cadence (Survivor airs
+  # one episode per week, so a 7-day window captures the post-episode
+  # discussion that drives the next boot prediction).
+  lookback_hours: 168
+  # Words / regex used to detect "boot prediction" sentences. Anything
+  # matching the regex is treated as a vote toward that contestant
+  # being the next boot.
+  boot_prediction_patterns:
+    - "(?i)\\bbooting\\s+(?P<name>[A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)"
+    - "(?i)\\b(?P<name>[A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)\\s+is\\s+going\\s+home"
+    - "(?i)\\b(?P<name>[A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)\\s+(?:gets|is)\\s+voted\\s+out"
+    - "(?i)\\bboot\\s+is\\s+(?P<name>[A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)"
+  # Words that flag a negative edit (target framing, villain edit,
+  # confidence-then-fall pattern). Used to compute the negative-edit
+  # score column.
+  negative_edit_terms:
+    - "target"
+    - "overconfident"
+    - "underedit"
+    - "negative edit"
+    - "edit suggests"
+    - "next boot"
+    - "easy boot"
+    - "obvious boot"
+    - "going home"
+    - "doomed"
+
+trading:
+  # Edge / EV thresholds applied to the live watchlist. Lower than the
+  # macro bots — Survivor markets are thinner and the model's signal
+  # is largely from the post-episode Reddit reaction (≈12h half-life).
+  min_edge: 0.06
+  min_ev_per_contract: 0.02
+  # Confidence floor — the calibrated probability must lie outside
+  # ±X% of the Kalshi market price before we flag a row as a BUY.
+  min_market_disagreement: 0.06
+
+validators:
+  # The same shape as the dashboard's other validator blocks so the
+  # adapter can hand them straight to the rules-engine builder.
+  prob_bounds_cents: [3, 97]
+  max_spread_cents: 12
+  min_minutes_to_close: 30
+  max_minutes_to_close: 20160
+  min_volume: 20
+  min_open_interest: 10
+  # If the Kalshi market hasn't refreshed in this many seconds we
+  # treat the row as "stale" and surface a WATCH instead of a BUY.
+  stale_market_seconds: 1800
