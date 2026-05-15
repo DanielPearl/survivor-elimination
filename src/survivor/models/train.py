@@ -52,11 +52,20 @@ class ComponentMetrics:
     precision: float
     recall: float
     roc_auc: float
+    threshold: float = 0.5
 
 
-def _eval_predictions(y_true: np.ndarray, y_prob: np.ndarray) -> ComponentMetrics:
-    y_pred = (y_prob >= 0.5).astype(int)
-    # ROC AUC can fail if only one class present in y_true; guard it.
+def _eval_predictions(y_true: np.ndarray, y_prob: np.ndarray,
+                       threshold: float = 0.5) -> ComponentMetrics:
+    """Compute the standard classifier metrics at the supplied threshold.
+
+    Boots are ~9% of rows in this panel, so the default 0.5 threshold
+    produces a degenerate all-zeros classifier (P/R/F1 all 0, accuracy
+    97%-ish but useless). The caller tunes a per-model threshold on
+    the training set (see ``_optimal_f1_threshold``) and passes it
+    here for both train and test evaluation.
+    """
+    y_pred = (y_prob >= threshold).astype(int)
     try:
         roc = roc_auc_score(y_true, y_prob)
     except ValueError:
@@ -69,7 +78,40 @@ def _eval_predictions(y_true: np.ndarray, y_prob: np.ndarray) -> ComponentMetric
         precision=precision_score(y_true, y_pred, zero_division=0),
         recall=recall_score(y_true, y_pred, zero_division=0),
         roc_auc=roc,
+        threshold=float(threshold),
     )
+
+
+def _optimal_f1_threshold(y_true: np.ndarray, y_prob: np.ndarray,
+                            min_recall: float = 0.30) -> float:
+    """Sweep thresholds in [0.05, 0.95] and pick the one that maximises
+    F1 on the training probabilities, subject to recall ≥ ``min_recall``.
+
+    The recall floor stops the optimizer from degenerating into an
+    "only fire on near-certainties" classifier — that would still give
+    F1 ~ 0 on the test set because we'd rarely flip a contestant.
+    """
+    best_threshold = 0.5
+    best_f1 = -1.0
+    for t in np.linspace(0.05, 0.95, 91):
+        y_pred = (y_prob >= t).astype(int)
+        rec = recall_score(y_true, y_pred, zero_division=0)
+        if rec < min_recall:
+            continue
+        f1 = f1_score(y_true, y_pred, zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = float(t)
+    if best_f1 < 0:
+        # No threshold met the recall floor — fall back to the
+        # threshold that maximises F1 without the floor.
+        for t in np.linspace(0.05, 0.95, 91):
+            y_pred = (y_prob >= t).astype(int)
+            f1 = f1_score(y_true, y_pred, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = float(t)
+    return best_threshold
 
 
 def _calibrate_gbt(model: HistGradientBoostingClassifier,
@@ -141,10 +183,16 @@ def train_and_persist() -> Dict[str, Any]:
         random_state=int(train_cfg["random_state"]),
     )
     lr.fit(X_train_s, y_train)
+    lr_train_prob = lr.predict_proba(X_train_s)[:, 1]
     lr_test_prob = lr.predict_proba(X_test_s)[:, 1]
-    lr_metrics = _eval_predictions(y_test, lr_test_prob)
-    log.info("logistic test brier=%.4f acc=%.3f auc=%.3f",
-              lr_metrics.brier, lr_metrics.accuracy, lr_metrics.roc_auc)
+    lr_threshold = _optimal_f1_threshold(y_train, lr_train_prob)
+    lr_train_metrics = _eval_predictions(y_train, lr_train_prob, lr_threshold)
+    lr_metrics = _eval_predictions(y_test, lr_test_prob, lr_threshold)
+    log.info("logistic threshold=%.2f train P/R/F1=%.2f/%.2f/%.2f test P/R/F1=%.2f/%.2f/%.2f auc=%.3f",
+              lr_threshold,
+              lr_train_metrics.precision, lr_train_metrics.recall, lr_train_metrics.f1,
+              lr_metrics.precision, lr_metrics.recall, lr_metrics.f1,
+              lr_metrics.roc_auc)
 
     # ── HistGradientBoosting (calibrated). ───────────────────────────
     hgb = HistGradientBoostingClassifier(
@@ -157,20 +205,30 @@ def train_and_persist() -> Dict[str, Any]:
     )
     gbt = _calibrate_gbt(hgb, X_train, y_train,
                           holdout_frac=float(train_cfg["calibration_holdout_fraction"]))
+    gbt_train_prob = gbt.predict_proba(X_train)[:, 1]
     gbt_test_prob = gbt.predict_proba(X_test)[:, 1]
-    gbt_metrics = _eval_predictions(y_test, gbt_test_prob)
-    log.info("calibrated GBT test brier=%.4f acc=%.3f auc=%.3f",
-              gbt_metrics.brier, gbt_metrics.accuracy, gbt_metrics.roc_auc)
+    gbt_threshold = _optimal_f1_threshold(y_train, gbt_train_prob)
+    gbt_train_metrics = _eval_predictions(y_train, gbt_train_prob, gbt_threshold)
+    gbt_metrics = _eval_predictions(y_test, gbt_test_prob, gbt_threshold)
+    log.info("GBT threshold=%.2f train P/R/F1=%.2f/%.2f/%.2f test P/R/F1=%.2f/%.2f/%.2f auc=%.3f",
+              gbt_threshold,
+              gbt_train_metrics.precision, gbt_train_metrics.recall, gbt_train_metrics.f1,
+              gbt_metrics.precision, gbt_metrics.recall, gbt_metrics.f1,
+              gbt_metrics.roc_auc)
 
     # ── Blend: pick the lower-Brier model. ───────────────────────────
     if not np.isnan(gbt_metrics.brier) and gbt_metrics.brier <= lr_metrics.brier:
         blended_prob = gbt_test_prob
         blended_metrics = gbt_metrics
+        blended_train_metrics = gbt_train_metrics
         best_name = "calibrated_gbt"
+        best_threshold = gbt_threshold
     else:
         blended_prob = lr_test_prob
         blended_metrics = lr_metrics
+        blended_train_metrics = lr_train_metrics
         best_name = "logistic"
+        best_threshold = lr_threshold
 
     # ── Persist artifacts. ───────────────────────────────────────────
     model_path = artifacts_dir / "model.joblib"
@@ -180,6 +238,7 @@ def train_and_persist() -> Dict[str, Any]:
         "logistic": lr,
         "calibrated_gbt": gbt,
         "best": best_name,
+        "threshold": best_threshold,
     }, model_path)
     log.info("wrote %s", model_path)
 
@@ -190,11 +249,22 @@ def train_and_persist() -> Dict[str, Any]:
         "rows_test": int(len(test_df)),
         "train_seasons": sorted(train_df["season"].unique().tolist()),
         "test_seasons": sorted(test_df["season"].unique().tolist()),
+        # Holdout-only metrics for back-compat with the existing
+        # dashboard readers (Brier / ROC AUC / etc. were already test-set).
         "logistic": asdict(lr_metrics),
         "calibrated_gbt": asdict(gbt_metrics),
         "blended": asdict(blended_metrics),
+        # Train-set metrics at the same threshold — surfaces train/test
+        # drift on the dashboard card alongside the holdout numbers.
+        "logistic_train": asdict(lr_train_metrics),
+        "calibrated_gbt_train": asdict(gbt_train_metrics),
+        "blended_train": asdict(blended_train_metrics),
         "best_model": best_name,
+        "threshold": float(best_threshold),
         "feature_count": len(FEATURE_COLUMNS),
+        # Class-balance stats — useful context for reading F1 / recall.
+        "train_positive_rate": float(np.mean(y_train)),
+        "test_positive_rate": float(np.mean(y_test)),
     }
     metrics_path = resolve_path(cfg["paths"]["metrics_json"])
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
