@@ -101,7 +101,36 @@ def build_watchlist(kalshi_records: List[Dict[str, Any]] | None = None
     if not state.get("contestants"):
         state = synthesize_state_from_kalshi(kalshi_records)
 
+    # Make sure every contestant Kalshi has a market for is in the
+    # state-derived scoring set. If the user hasn't edited
+    # current_state.json yet (or this is a brand-new season), the
+    # Kalshi-only contestants would otherwise miss the model
+    # entirely. They get the same defaults as a synthesized state.
     state_df = state_to_dataframe(state)
+    state_names = set(state_df["contestant"].astype(str))
+    kalshi_names = []
+    seen = set()
+    for r in kalshi_records:
+        c = r.get("contestant")
+        if c and c not in seen:
+            seen.add(c)
+            kalshi_names.append(c)
+    missing = [n for n in kalshi_names if n not in state_names]
+    if missing:
+        # Mint default-only state rows for each missing contestant
+        # and concatenate so the model still scores them.
+        stub = {
+            **state,
+            "contestants": [{"name": n} for n in missing],
+            "synthesized": True,
+        }
+        # Re-use the canonical state-to-frame conversion so the
+        # defaults are applied identically.
+        from ..data.current_state import state_to_dataframe as _s2df
+        more = _s2df(stub)
+        if not more.empty:
+            import pandas as pd
+            state_df = pd.concat([state_df, more], ignore_index=True)
 
     # ── Reddit features ──────────────────────────────────────────────
     contestant_names = state_df["contestant"].astype(str).tolist()
