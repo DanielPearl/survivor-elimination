@@ -3,13 +3,21 @@
 Each validator returns ``(passes, reason)``. The watchlist exporter
 chains them: if all pass and EV > min_ev_per_contract, the row is
 marked BUY (with side derived from sign of model − market). Anything
-failing surfaces as SKIP or WATCH (price + EV present but a structural
-gate blocked the trade — e.g. stale market, thin book).
+failing surfaces as SKIP or WATCH.
+
+Threshold defaults come from ``kalshi_sdk.validators.UNIFIED_VALIDATOR_DEFAULTS``
+so the survivor bot matches every other Kalshi bot's cautious floor
+(prob bounds 25-75c, max-entry 70c, spread cap 6c, min volume/OI 50).
+Survivor-specific gates (contestant parsing, season/episode parsing,
+duplicate detection, model-output presence) remain local because they
+have no analog in the other bots.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
+
+from kalshi_sdk.validators import UNIFIED_VALIDATOR_DEFAULTS
 
 from ..utils.config import load_config
 
@@ -40,6 +48,18 @@ def has_valid_price(row: Dict[str, Any], lo: int, hi: int
     return True, ""
 
 
+def max_entry_price_ok(row: Dict[str, Any], cap_cents: int) -> Tuple[bool, str]:
+    """Hard cap on the price we'd pay. Same gate every other Kalshi bot
+    runs — at >70c the loss-vs-gain ratio is 2.3:1+ and a single
+    mispredicted elimination eats many wins."""
+    ya = row.get("yes_ask_cents")
+    if ya is None:
+        return True, ""
+    if ya > cap_cents:
+        return False, f"entry too expensive ({ya}c > {cap_cents}c cap)"
+    return True, ""
+
+
 def parses_season_episode(row: Dict[str, Any]) -> Tuple[bool, str]:
     if row.get("season") is None:
         return False, "could not parse season"
@@ -58,8 +78,6 @@ def market_fresh(row: Dict[str, Any], stale_seconds: int
                   ) -> Tuple[bool, str]:
     lu = _to_dt(row.get("last_updated"))
     if lu is None:
-        # If Kalshi never reported last_updated we don't fail the gate
-        # — we just emit a WATCH downstream. Returns True here.
         return True, ""
     age = (datetime.now(timezone.utc) - lu).total_seconds()
     if age > stale_seconds:
@@ -68,10 +86,6 @@ def market_fresh(row: Dict[str, Any], stale_seconds: int
 
 
 def has_model_output(row: Dict[str, Any]) -> Tuple[bool, str]:
-    # The exporter routes model_prob_eliminated OR model_prob_win_season
-    # into the unified ``model_prob`` field for the comparison side; we
-    # fall back to either of the two so an older row schema still
-    # passes the gate.
     if row.get("model_prob") is None and row.get("model_prob_eliminated") is None \
             and row.get("model_prob_win_season") is None:
         return False, "no model output for contestant"
@@ -114,16 +128,16 @@ def liquidity_ok(row: Dict[str, Any], min_vol: int, min_oi: int
 def evaluate_row(row: Dict[str, Any], seen_contestants: List[str]
                   ) -> Tuple[bool, List[str]]:
     """Run every gate, collect the blocker list. Caller decides what
-    to do with the row based on whether `passes` is True.
+    to do with the row based on whether ``passes`` is True.
 
-    Duplicate-contestant detection runs here: if the same contestant
-    appears in `seen_contestants` already, we mark the row blocked so
-    the dashboard surfaces it as a data-quality issue rather than
-    silently double-scoring the same boot.
+    Validator thresholds fall back to ``UNIFIED_VALIDATOR_DEFAULTS`` so
+    a missing config.yaml field doesn't accidentally widen a gate; the
+    cautious-side floor is the same one every other Kalshi bot runs.
     """
     cfg = load_config()
     val = cfg.get("validators", {})
-    lo, hi = val.get("prob_bounds_cents", [3, 97])
+    lo, hi = val.get("prob_bounds_cents",
+                     UNIFIED_VALIDATOR_DEFAULTS["prob_bounds_cents"])
     blockers: List[str] = []
     for fn in (market_open, parses_season_episode, parses_contestant,
                has_model_output):
@@ -133,17 +147,36 @@ def evaluate_row(row: Dict[str, Any], seen_contestants: List[str]
     ok, reason = has_valid_price(row, int(lo), int(hi))
     if not ok:
         blockers.append(reason)
-    ok, reason = spread_ok(row, int(val.get("max_spread_cents", 12)))
+    ok, reason = max_entry_price_ok(
+        row,
+        int(val.get("max_entry_price_cents",
+                    UNIFIED_VALIDATOR_DEFAULTS["max_entry_price_cents"])),
+    )
     if not ok:
         blockers.append(reason)
-    ok, reason = closes_in_window(row,
-                                   int(val.get("min_minutes_to_close", 30)),
-                                   int(val.get("max_minutes_to_close", 20160)))
+    ok, reason = spread_ok(
+        row,
+        int(val.get("max_spread_cents",
+                    UNIFIED_VALIDATOR_DEFAULTS["max_spread_cents"])),
+    )
     if not ok:
         blockers.append(reason)
-    ok, reason = liquidity_ok(row,
-                               int(val.get("min_volume", 0)),
-                               int(val.get("min_open_interest", 0)))
+    ok, reason = closes_in_window(
+        row,
+        int(val.get("min_minutes_to_close",
+                    UNIFIED_VALIDATOR_DEFAULTS["min_minutes_to_close"])),
+        int(val.get("max_minutes_to_close",
+                    UNIFIED_VALIDATOR_DEFAULTS["max_minutes_to_close"])),
+    )
+    if not ok:
+        blockers.append(reason)
+    ok, reason = liquidity_ok(
+        row,
+        int(val.get("min_volume",
+                    UNIFIED_VALIDATOR_DEFAULTS["min_volume"])),
+        int(val.get("min_open_interest",
+                    UNIFIED_VALIDATOR_DEFAULTS["min_open_interest"])),
+    )
     if not ok:
         blockers.append(reason)
     ok, reason = market_fresh(row, int(val.get("stale_market_seconds", 1800)))

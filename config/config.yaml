@@ -87,24 +87,22 @@ reddit:
     - "doomed"
 
 trading:
-  # Edge / EV thresholds applied to the live watchlist. Lower than the
-  # macro bots — Survivor markets are thinner and the model's signal
-  # is largely from the post-episode Reddit reaction (≈12h half-life).
-  min_edge: 0.06
-  min_ev_per_contract: 0.02
-  # Confidence floor — the calibrated probability must lie outside
-  # ±X% of the Kalshi market price before we flag a row as a BUY.
+  # Unified cautious floor across every Kalshi bot. See
+  # kalshi_sdk.validators.UNIFIED_EDGE_DEFAULTS for the rationale.
+  min_edge: 0.05
+  min_ev_per_contract: 0.03
   min_market_disagreement: 0.06
 
 validators:
-  # The same shape as the dashboard's other validator blocks so the
-  # adapter can hand them straight to the rules-engine builder.
-  prob_bounds_cents: [3, 97]
-  max_spread_cents: 12
+  # Unified cautious floor across every Kalshi bot. See
+  # kalshi_sdk.validators.UNIFIED_VALIDATOR_DEFAULTS for the rationale.
+  prob_bounds_cents: [25, 75]
+  max_spread_cents: 6
   min_minutes_to_close: 30
   max_minutes_to_close: 20160
-  min_volume: 20
-  min_open_interest: 10
+  min_volume: 50
+  min_open_interest: 50
+  max_entry_price_cents: 70
   # If the Kalshi market hasn't refreshed in this many seconds we
   # treat the row as "stale" and surface a WATCH instead of a BUY.
   stale_market_seconds: 1800
