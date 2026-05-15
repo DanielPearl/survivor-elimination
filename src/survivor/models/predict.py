@@ -42,11 +42,15 @@ def predict_eliminated_proba(df: pd.DataFrame) -> np.ndarray:
     `df` must carry the columns the historical panel does (plus the
     optional Reddit columns). Rows for already-eliminated contestants
     should not be in `df` — the live scorer filters them out.
+
+    If the trained artifact carries the ``per_episode_normalize``
+    flag (newer models), raw probabilities are renormalised within
+    each (season, episode) group so the scores reflect the per-
+    episode argmax structure the trainer optimised for.
     """
     art = _load_artifact()
     if art is None:
         n = len(df)
-        # Uniform-over-active prior: 1 / remaining (rough boot-rate)
         if "remaining" in df.columns:
             r = pd.to_numeric(df["remaining"], errors="coerce").fillna(8).values
             return np.clip(1.0 / np.maximum(r, 2), 0.02, 0.5)
@@ -56,8 +60,26 @@ def predict_eliminated_proba(df: pd.DataFrame) -> np.ndarray:
     if art.get("best") == "logistic":
         scaler = art["scaler"]
         X_arr = scaler.transform(X)
-        return model.predict_proba(X_arr)[:, 1]
-    return model.predict_proba(X)[:, 1]
+        raw = model.predict_proba(X_arr)[:, 1]
+    else:
+        raw = model.predict_proba(X)[:, 1]
+    if not art.get("per_episode_normalize"):
+        return raw
+    # Re-use the trainer's exact normalisation function — kept in
+    # train.py so there's exactly one source of truth.
+    from .train import normalize_per_episode
+    return normalize_per_episode(df, raw)
+
+
+def get_decision_threshold() -> float:
+    """The threshold the trainer locked in for BUY-eligibility on the
+    blended model's normalised probabilities. Live exporter reads
+    this so its BUY YES verdict matches the trainer's reported F1
+    operating point."""
+    art = _load_artifact()
+    if art is None:
+        return 0.5
+    return float(art.get("threshold") or 0.5)
 
 
 def reset_model_cache() -> None:
