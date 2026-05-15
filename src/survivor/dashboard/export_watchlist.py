@@ -97,6 +97,18 @@ def build_watchlist(kalshi_records: List[Dict[str, Any]] | None = None
             log.warning("kalshi fetch failed: %s — returning empty watchlist", exc)
             kalshi_records = []
 
+    # Per-episode "Will X be eliminated" markets only. Season-winner
+    # markets (the bulk of what Kalshi currently lists under the
+    # KXSURVIVOR series) are explicitly excluded — they answer a
+    # different question than the model and would dilute the
+    # watchlist. When no elimination markets are active, the bot's
+    # output is an empty rows list and the dashboard hides the card
+    # entirely (see survivor.is_available below).
+    kalshi_records = [
+        r for r in (kalshi_records or [])
+        if (r.get("market_type") or "") == "elimination"
+    ]
+
     state = load_current_state()
     if not state.get("contestants"):
         state = synthesize_state_from_kalshi(kalshi_records)
