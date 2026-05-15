@@ -213,35 +213,49 @@ def _client():
 
 
 def _list_survivor_series(c, prefix: str) -> List[str]:
-    """Enumerate every series the SDK can see whose ticker starts with
-    `prefix`. Falls back to a single-prefix query when the SDK doesn't
-    expose `iter_series`."""
+    """Enumerate every series whose ticker starts with `prefix`.
+
+    Probes — in order:
+      1. The bare prefix itself (Kalshi currently lists every
+         contestant's win-season market under the single
+         ``KXSURVIVOR`` series rather than per-season).
+      2. ``iter_series`` if the SDK exposes it.
+      3. Probe ``{prefix}{n}`` for n=40..79 in case a future
+         season ships as ``KXSURVIVOR50`` / ``KXSURVIVOR51``.
+    """
     tickers: List[str] = []
+    iter_open = getattr(c, "iter_open_markets", None)
+    if iter_open is not None:
+        try:
+            for _ in iter_open(series_ticker=prefix):
+                tickers.append(prefix)
+                break
+        except Exception as exc:  # noqa: BLE001
+            log.warning("probe of %s failed: %s", prefix, exc)
+
     iter_series = getattr(c, "iter_series", None)
     if iter_series is not None:
         try:
             for s in iter_series():
                 t = (s.get("ticker") or "").strip()
-                if t.startswith(prefix):
+                if t.startswith(prefix) and t not in tickers:
                     tickers.append(t)
         except Exception as exc:  # noqa: BLE001
-            log.warning("iter_series failed: %s — falling back to prefix scan", exc)
-    if tickers:
-        return tickers
-    # Fallback: probe a handful of likely series numbers (current era is
-    # ~50). The Kalshi API returns 404 for unknown series; we just skip.
-    candidates = [f"{prefix}{n}" for n in range(40, 80)]
-    iter_open = getattr(c, "iter_open_markets", None)
-    if iter_open is None:
-        return [prefix]
-    for cand in candidates:
-        try:
-            for _ in iter_open(series_ticker=cand):
-                tickers.append(cand)
-                break
-        except Exception:  # noqa: BLE001
-            continue
-    return tickers
+            log.warning("iter_series failed: %s — using probe fallback", exc)
+
+    if iter_open is not None:
+        for n in range(40, 80):
+            cand = f"{prefix}{n}"
+            if cand in tickers:
+                continue
+            try:
+                for _ in iter_open(series_ticker=cand):
+                    tickers.append(cand)
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
+    return tickers or [prefix]
 
 
 def fetch_survivor_markets(prefix: str | None = None,
