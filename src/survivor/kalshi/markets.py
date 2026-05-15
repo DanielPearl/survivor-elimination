@@ -33,24 +33,51 @@ from ..utils.config import load_config
 log = logging.getLogger("survivor.kalshi.markets")
 
 
-# Match the contestant name out of the most common Kalshi survivor
-# market titles. The Kalshi survivor series uses a handful of
-# templates; we try them in order of specificity.
-_TITLE_PATTERNS = [
-    # "Will Sam be eliminated in episode 7?"
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+)?)\s+be\s+eliminated", re.IGNORECASE),
-    # "Will Sam survive episode 7?"
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+)?)\s+survive", re.IGNORECASE),
-    # "Will Sam be voted out next?"
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+)?)\s+be\s+voted\s+out", re.IGNORECASE),
-    # "Is Sam the next boot?"
-    re.compile(r"^Is\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+)?)\s+the\s+next\s+boot", re.IGNORECASE),
-    # Fallback — first capitalised name in the title.
-    re.compile(r"\b(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+)?)\b"),
+# Kalshi's Survivor markets come in two shapes:
+#   ELIMINATION  "Will Sam be eliminated in episode 7?"
+#   SEASON_WIN   "Will Sam Phalen win Survivor Season 50?"
+# We recognise each with its own regex and tag the market with a
+# ``market_type`` field so the watchlist exporter can apply the right
+# transform when computing model_prob vs kalshi_prob.
+_ELIM_PATTERNS = [
+    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+be\s+eliminated", re.IGNORECASE),
+    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+be\s+voted\s+out", re.IGNORECASE),
+    re.compile(r"^Is\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+the\s+next\s+boot", re.IGNORECASE),
+    # "Will Sam survive episode 7?" — interpret as the inverse of
+    # elimination (handled by the caller via _survive_inversion below).
+    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+survive", re.IGNORECASE),
 ]
+
+_SEASON_WIN_PATTERNS = [
+    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+win\s+Survivor", re.IGNORECASE),
+    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+win\s+the\s+season", re.IGNORECASE),
+]
+
+# Fallback — first capitalised name. Last resort only.
+_NAME_FALLBACK = re.compile(
+    r"\b(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3})\b"
+)
 
 _EPISODE_RE = re.compile(r"episode\s*(\d+)", re.IGNORECASE)
 _SEASON_RE = re.compile(r"season\s*(\d+)", re.IGNORECASE)
+
+
+def parse_market_type(title: str) -> str:
+    """Return one of ``elimination``, ``season_win``, or ``unknown``.
+
+    The watchlist exporter uses this to decide which side of the
+    YES contract represents "model predicts elimination" — they're
+    opposite directions on the two market types.
+    """
+    if not title:
+        return "unknown"
+    for p in _ELIM_PATTERNS:
+        if p.search(title):
+            return "elimination"
+    for p in _SEASON_WIN_PATTERNS:
+        if p.search(title):
+            return "season_win"
+    return "unknown"
 
 
 def _to_float(v):
@@ -117,14 +144,19 @@ def _open_interest(market: dict) -> float | None:
 def parse_contestant(title: str) -> str | None:
     if not title:
         return None
-    for pat in _TITLE_PATTERNS:
+    for pat in _ELIM_PATTERNS + _SEASON_WIN_PATTERNS:
         m = pat.search(title)
         if m:
             name = m.group("name").strip()
-            # Strip common stop-words at the start so "The Survivor"
-            # doesn't match.
-            if name.lower() in {"the", "next", "first", "no", "yes"}:
+            if name.lower() in {"the", "next", "first", "no", "yes",
+                                 "survivor", "season"}:
                 continue
+            return name
+    m = _NAME_FALLBACK.search(title)
+    if m:
+        name = m.group("name").strip()
+        if name.lower() not in {"the", "next", "first", "no", "yes",
+                                  "survivor", "season", "will"}:
             return name
     return None
 
@@ -266,7 +298,25 @@ def normalise_markets(markets: List[Dict[str, Any]]
             # set but keep them visible in the dashboard via the raw
             # market view.
             continue
-        market_prob = _yes_price_dollars(m)
+        market_type = parse_market_type(title)
+        yes_p = _yes_price_dollars(m)
+        # For season-winner markets the YES price is P(wins season).
+        # For elimination markets it's P(eliminated). Surviving-type
+        # titles ("Will Sam survive ep 7?") match _ELIM_PATTERNS but
+        # mean the opposite direction — we flip them here.
+        is_survive = bool(title and re.search(r"\bsurvive\b", title, re.I))
+        if market_type == "elimination" and is_survive and yes_p is not None:
+            market_prob_eliminated = 1.0 - yes_p
+            market_prob_win_season = None
+        elif market_type == "elimination":
+            market_prob_eliminated = yes_p
+            market_prob_win_season = None
+        elif market_type == "season_win":
+            market_prob_eliminated = None
+            market_prob_win_season = yes_p
+        else:
+            market_prob_eliminated = yes_p
+            market_prob_win_season = None
         out.append({
             "market_id": m.get("ticker") or "",
             "ticker": m.get("ticker") or "",
@@ -275,7 +325,9 @@ def normalise_markets(markets: List[Dict[str, Any]]
             "season": season,
             "episode": episode,
             "contestant": contestant,
-            "market_prob_eliminated": market_prob,
+            "market_type": market_type,
+            "market_prob_eliminated": market_prob_eliminated,
+            "market_prob_win_season": market_prob_win_season,
             "yes_ask_cents": _ask_cents(m, "yes"),
             "no_ask_cents": _ask_cents(m, "no"),
             "spread_cents": _spread_cents(m),

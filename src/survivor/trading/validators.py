@@ -68,7 +68,12 @@ def market_fresh(row: Dict[str, Any], stale_seconds: int
 
 
 def has_model_output(row: Dict[str, Any]) -> Tuple[bool, str]:
-    if row.get("model_prob_eliminated") is None:
+    # The exporter routes model_prob_eliminated OR model_prob_win_season
+    # into the unified ``model_prob`` field for the comparison side; we
+    # fall back to either of the two so an older row schema still
+    # passes the gate.
+    if row.get("model_prob") is None and row.get("model_prob_eliminated") is None \
+            and row.get("model_prob_win_season") is None:
         return False, "no model output for contestant"
     return True, ""
 

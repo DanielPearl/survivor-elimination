@@ -130,19 +130,49 @@ def build_watchlist(kalshi_records: List[Dict[str, Any]] | None = None
     # Map contestant -> model probability for quick lookup.
     model_by_contestant = dict(zip(state_df["contestant"].astype(str),
                                      state_df["model_prob_eliminated"].astype(float)))
+    # Derive each contestant's model-based P(wins season) for season-
+    # winner markets. Approximation: each remaining episode the
+    # contestant has the same boot probability (model_p_elim). After
+    # `r-1` more boots they're a finalist; from there assume the win
+    # is uniform among finalists (≈ 1/4 with the modern fire-making
+    # final four). So:
+    #     P(survives to finale) ≈ (1 - p_elim) ^ (active - 4)
+    #     P(wins | survives)     ≈ 0.25
+    # Clamp to [0.005, 0.4].
+    active = max(1, len(state_df))
+    win_season_by_contestant: Dict[str, float] = {}
+    for c, p_elim in model_by_contestant.items():
+        steps_to_finale = max(0, active - 4)
+        p_survive = max(0.0, min(1.0, 1.0 - float(p_elim))) ** steps_to_finale
+        p_win = p_survive * 0.25
+        win_season_by_contestant[c] = max(0.005, min(0.4, p_win))
 
     for k in kalshi_records:
         name = k.get("contestant")
-        mp = float(k.get("market_prob_eliminated") or 0.0) or None
-        model_p = float(model_by_contestant.get(name)) if name in model_by_contestant else None
-        # Edge = model - market (positive => bot disagrees with Kalshi:
-        # model thinks contestant *more* likely to be eliminated).
+        market_type = k.get("market_type") or "unknown"
+        mp_elim = (float(k["market_prob_eliminated"])
+                    if k.get("market_prob_eliminated") is not None else None)
+        mp_win = (float(k["market_prob_win_season"])
+                   if k.get("market_prob_win_season") is not None else None)
+        model_p_elim = (float(model_by_contestant.get(name))
+                         if name in model_by_contestant else None)
+        model_p_win = (float(win_season_by_contestant.get(name))
+                        if name in win_season_by_contestant else None)
+
+        # Decide which model probability we're comparing to which
+        # Kalshi probability for *this* market.
+        if market_type == "season_win":
+            model_p = model_p_win
+            mp = mp_win
+        else:
+            model_p = model_p_elim
+            mp = mp_elim
+        # Edge = model - market on the YES side of THIS market.
         edge = None
         ev_yes = ev_no = None
         if model_p is not None and mp is not None:
             edge = model_p - mp
             ev_yes = ev_calc(model_p, mp, slip).ev_per_contract
-            # NO side: P(not eliminated) and 1 - mp
             ev_no = ev_calc(1.0 - model_p, 1.0 - mp, slip).ev_per_contract
 
         row: Dict[str, Any] = {
@@ -153,10 +183,17 @@ def build_watchlist(kalshi_records: List[Dict[str, Any]] | None = None
             "episode": k.get("episode"),
             "contestant": name,
             "title": k.get("title"),
-            "model_prob_eliminated": (round(model_p, 4)
-                                       if model_p is not None else None),
-            "market_prob_eliminated": (round(mp, 4)
-                                        if mp is not None else None),
+            "market_type": market_type,
+            "model_prob_eliminated": (round(model_p_elim, 4)
+                                       if model_p_elim is not None else None),
+            "market_prob_eliminated": (round(mp_elim, 4)
+                                        if mp_elim is not None else None),
+            "model_prob_win_season": (round(model_p_win, 4)
+                                       if model_p_win is not None else None),
+            "market_prob_win_season": (round(mp_win, 4)
+                                        if mp_win is not None else None),
+            "model_prob": (round(model_p, 4) if model_p is not None else None),
+            "market_prob": (round(mp, 4) if mp is not None else None),
             "edge": (round(edge, 4) if edge is not None else None),
             "ev_yes": (round(ev_yes, 4) if ev_yes is not None else None),
             "ev_no": (round(ev_no, 4) if ev_no is not None else None),
