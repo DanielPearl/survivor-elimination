@@ -39,24 +39,26 @@ log = logging.getLogger("survivor.kalshi.markets")
 # We recognise each with its own regex and tag the market with a
 # ``market_type`` field so the watchlist exporter can apply the right
 # transform when computing model_prob vs kalshi_prob.
+# Single name token: capitalised word, OR a 1-2 letter token (middle
+# initials like "Q" or "J.M."). Joined into a multi-word name via
+# the same word-separator pattern that allows up to 4 trailing words.
+_NAME_TOK = r"[A-Z][A-Za-z'.\-]*"
+_NAME_GROUP = rf"{_NAME_TOK}(?:\s+{_NAME_TOK}){{0,4}}"
+
 _ELIM_PATTERNS = [
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+be\s+eliminated", re.IGNORECASE),
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+be\s+voted\s+out", re.IGNORECASE),
-    re.compile(r"^Is\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+the\s+next\s+boot", re.IGNORECASE),
-    # "Will Sam survive episode 7?" — interpret as the inverse of
-    # elimination (handled by the caller via _survive_inversion below).
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+survive", re.IGNORECASE),
+    re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+be\s+eliminated", re.IGNORECASE),
+    re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+be\s+voted\s+out", re.IGNORECASE),
+    re.compile(rf"^Is\s+(?P<name>{_NAME_GROUP}?)\s+the\s+next\s+boot", re.IGNORECASE),
+    re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+survive", re.IGNORECASE),
 ]
 
 _SEASON_WIN_PATTERNS = [
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+win\s+Survivor", re.IGNORECASE),
-    re.compile(r"^Will\s+(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3}?)\s+win\s+the\s+season", re.IGNORECASE),
+    re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+win\s+Survivor", re.IGNORECASE),
+    re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+win\s+the\s+season", re.IGNORECASE),
 ]
 
-# Fallback — first capitalised name. Last resort only.
-_NAME_FALLBACK = re.compile(
-    r"\b(?P<name>[A-Z][A-Za-z'.\-]+(?:\s+[A-Z][A-Za-z'.\-]+){0,3})\b"
-)
+# Fallback — first capitalised name run. Last resort only.
+_NAME_FALLBACK = re.compile(rf"\b(?P<name>{_NAME_GROUP})\b")
 
 _EPISODE_RE = re.compile(r"episode\s*(\d+)", re.IGNORECASE)
 _SEASON_RE = re.compile(r"season\s*(\d+)", re.IGNORECASE)
