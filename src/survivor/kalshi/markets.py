@@ -40,10 +40,17 @@ log = logging.getLogger("survivor.kalshi.markets")
 # ``market_type`` field so the watchlist exporter can apply the right
 # transform when computing model_prob vs kalshi_prob.
 # Single name token: capitalised word, OR a 1-2 letter token (middle
-# initials like "Q" or "J.M."). Joined into a multi-word name via
-# the same word-separator pattern that allows up to 4 trailing words.
-_NAME_TOK = r"[A-Z][A-Za-z'.\-]*"
-_NAME_GROUP = rf"{_NAME_TOK}(?:\s+{_NAME_TOK}){{0,4}}"
+# initials), OR a nickname wrapped in ASCII / Unicode quotes
+# ("Coach", "Q" — curly quotes appear in Kalshi titles). Joined into
+# a multi-word name via a separator that allows up to 4 trailing words.
+_NAME_TOK = (
+    r"(?:"
+    r"[“”\"][^“”\"]+[“”\"]"  # "Coach" / "Q"
+    r"|"
+    r"[A-Z][A-Za-z'.\-]*"  # standard capitalised word
+    r")"
+)
+_NAME_GROUP = rf"{_NAME_TOK}(?:\s+{_NAME_TOK}){{0,5}}"
 
 _ELIM_PATTERNS = [
     re.compile(rf"^Will\s+(?P<name>{_NAME_GROUP}?)\s+be\s+eliminated", re.IGNORECASE),
