@@ -43,10 +43,11 @@ def predict_eliminated_proba(df: pd.DataFrame) -> np.ndarray:
     optional Reddit columns). Rows for already-eliminated contestants
     should not be in `df` — the live scorer filters them out.
 
-    If the trained artifact carries the ``per_episode_normalize``
-    flag (newer models), raw probabilities are renormalised within
-    each (season, episode) group so the scores reflect the per-
-    episode argmax structure the trainer optimised for.
+    The artifact layout supports two generations:
+      - Newer: ``families`` dict carrying every CV-tuned family +
+        the stacker; ``best`` is one of the keys.
+      - Older: bare ``logistic`` / ``calibrated_gbt`` at the top
+        level (legacy back-compat path).
     """
     art = _load_artifact()
     if art is None:
@@ -56,17 +57,30 @@ def predict_eliminated_proba(df: pd.DataFrame) -> np.ndarray:
             return np.clip(1.0 / np.maximum(r, 2), 0.02, 0.5)
         return np.full(n, 1.0 / max(1, n))
     X = build_features(df)
-    model = art["calibrated_gbt"] if art.get("best") == "calibrated_gbt" else art["logistic"]
-    if art.get("best") == "logistic":
-        scaler = art["scaler"]
-        X_arr = scaler.transform(X)
-        raw = model.predict_proba(X_arr)[:, 1]
+    best = art.get("best") or "logistic"
+    raw: np.ndarray
+    families = art.get("families") or {}
+    if best in families:
+        # New artifact layout.
+        fam = families[best]
+        model = fam["model"]
+        scaler = fam.get("scaler")
+        X_arr = scaler.transform(X) if scaler is not None else X.values
+        if hasattr(model, "predict_proba"):
+            raw = model.predict_proba(X_arr)[:, 1]
+        else:
+            d = model.decision_function(X_arr)
+            raw = 1.0 / (1.0 + np.exp(-d))
     else:
-        raw = model.predict_proba(X)[:, 1]
+        # Legacy back-compat path — top-level logistic / calibrated_gbt.
+        if best == "calibrated_gbt":
+            raw = art["calibrated_gbt"].predict_proba(X)[:, 1]
+        else:
+            scaler = art["scaler"]
+            X_arr = scaler.transform(X)
+            raw = art["logistic"].predict_proba(X_arr)[:, 1]
     if not art.get("per_episode_normalize"):
         return raw
-    # Re-use the trainer's exact normalisation function — kept in
-    # train.py so there's exactly one source of truth.
     from .train import normalize_per_episode
     return normalize_per_episode(df, raw)
 
