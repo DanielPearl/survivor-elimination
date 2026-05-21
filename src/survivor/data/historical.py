@@ -1,8 +1,13 @@
 """Historical boot-data loader.
 
-The training panel is a CSV at ``data/raw/historical_boots.csv``. Each
-row is one boot event from a past season — the canonical Survivor
-elimination log. Schema:
+The training panel is a CSV at ``data/raw/historical_boots.csv``,
+materialised from the ``doehm/survivoR`` archive via
+``scripts/build_historical_panel.py``. There is no synthetic fallback —
+if the CSV is missing the trainer raises and the operator is expected
+to regenerate it from the archive.
+
+Each row is one (season, episode, contestant) observation from a past
+US Survivor season. Schema:
 
     season              int      Survivor season number (e.g. 41)
     episode             int      episode number within the season (1-indexed)
@@ -30,16 +35,11 @@ elimination log. Schema:
 
 Sources & curation
 ------------------
-The seed dataset is hand-curated from canonical Survivor reference
-(season recaps + wiki episode pages) for the modern era (S41–S49).
-Numeric per-episode columns (confessional counts, visibility) are
-approximated from publicly-reported edgic ratings. The model is
-trained on this panel; the live scorer reuses the same column shape
-to keep features stable across train and inference.
-
-If the CSV is missing the loader falls back to a small built-in
-seed of three "demo" seasons so the unit tests / first-run smoke
-still produce a trained model rather than crashing.
+The panel is built from the ``doehm/survivoR`` GitHub archive
+(MIT-licensed, actively maintained). Confessional counts, vote history,
+advantage movements, and challenge results are all real per-episode
+records — no synthetic data. See
+``src/survivor/data/survivor_archive.py`` for the construction.
 """
 from __future__ import annotations
 
@@ -103,18 +103,20 @@ _OPTIONAL_DEFAULTS: dict[str, float] = {
 def load_historical_panel(csv_path: str | Path | None = None) -> pd.DataFrame:
     """Read the historical boot panel into a DataFrame.
 
-    Falls back to the built-in seed when the file is missing — keeps
-    smoke tests honest without forcing a checkout to ship the raw
-    panel before everything else can run.
+    The CSV is built from the ``doehm/survivoR`` archive (see
+    ``survivor_archive.build_historical_panel``). If it's missing,
+    raise — we no longer fall back to synthetic data.
     """
     cfg = load_config()
     if csv_path is None:
         csv_path = resolve_path(cfg["paths"]["historical_csv"])
     p = Path(csv_path)
     if not p.exists():
-        log.warning("no historical csv at %s — using built-in seed", p)
-        from . import seed_panel  # local import keeps cold-load light
-        return seed_panel.build()
+        raise FileNotFoundError(
+            f"historical panel not found at {p}. Run "
+            "`python scripts/build_historical_panel.py` to materialise it "
+            "from the doehm/survivoR archive."
+        )
     df = pd.read_csv(p)
     # Required columns — fail loudly if these are missing.
     required = [c for c in HISTORICAL_COLUMNS if c not in _OPTIONAL_DEFAULTS]
