@@ -97,7 +97,7 @@ validators:
   # Unified cautious floor across every Kalshi bot. See
   # kalshi_sdk.validators.UNIFIED_VALIDATOR_DEFAULTS for the rationale.
   prob_bounds_cents: [25, 75]
-  max_spread_cents: 6
+  max_spread_cents: null  # gate retired 2026-07-15 per user
   min_minutes_to_close: 30
   max_minutes_to_close: 20160
   min_volume: 50

@@ -154,13 +154,15 @@ def evaluate_row(row: Dict[str, Any], seen_contestants: List[str]
     )
     if not ok:
         blockers.append(reason)
-    ok, reason = spread_ok(
-        row,
-        int(val.get("max_spread_cents",
-                    UNIFIED_VALIDATOR_DEFAULTS["max_spread_cents"])),
-    )
-    if not ok:
-        blockers.append(reason)
+    # Spread gate skipped when max_spread_cents is None (2026-07-15
+    # SDK-wide retirement of the 6¢ cap). ``spread_ok`` doesn't accept
+    # None so we short-circuit rather than call it.
+    _spread_cap = val.get("max_spread_cents",
+                          UNIFIED_VALIDATOR_DEFAULTS["max_spread_cents"])
+    if _spread_cap is not None:
+        ok, reason = spread_ok(row, int(_spread_cap))
+        if not ok:
+            blockers.append(reason)
     ok, reason = closes_in_window(
         row,
         int(val.get("min_minutes_to_close",
